@@ -146,7 +146,7 @@ Or on Google Colab (already in notebook):
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/underwater-image-enhancement.git
+git clone https://github.com/PauletteG9/underwater-image-enhancement.git
 cd underwater-image-enhancement
 ```
 
