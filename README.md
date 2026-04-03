@@ -1,164 +1,231 @@
-# 🌊 Hybrid Underwater Image Enhancement using CNN
-
-## 📌 Overview
-
-This project presents a **hybrid deep learning pipeline** for underwater image enhancement, combining:
-
-* **Blind Denoising (DnCNN-style)**
-* **Residual CNN-based Color Enhancement**
-
-Underwater images suffer from **color distortion, low contrast, and noise** due to light absorption and scattering. This model improves visual quality while preserving structural details.
+# Hybrid Underwater Image Enhancement
+### CNN Blind Denoising + Perceptual Colour Enhancement Pipeline
 
 ---
 
-## 🎯 Objectives
+## Overview
 
-* Remove noise using blind denoising
-* Restore color balance using perceptual color correction
-* Enhance contrast and sharpness
-* Preserve structural details
-* Evaluate performance using multiple image quality metrics
+Underwater images suffer from wavelength-dependent colour attenuation, volumetric scattering, low contrast, and sensor noise. This project proposes a **two-stage hybrid deep learning pipeline** that first removes noise blindly, then corrects colour and contrast using a perceptual LAB colour loss.
+
+The key insight: applying enhancement directly to a noisy image amplifies the noise. By decoupling denoising from enhancement, each network can specialise — leading to measurably better results.
 
 ---
 
-## 🧠 Model Architecture
+## Results
 
-### 🔹 Stage 1: Blind Denoiser
+| Method | PSNR (dB) | SSIM | MSE |
+|---|---|---|---|
+| Traditional (Hist. EQ.) | 16.80 | 0.620 | — |
+| CNN Enhancement Only | 19.90 | 0.740 | — |
+| **Proposed Hybrid (Ours)** | **24.42** | **0.724** | **0.0036** |
 
-* DnCNN-style architecture
-* Learns **residual noise map**
-* Output: Cleaned image
-
-### 🔹 Stage 2: Color Enhancer
-
-* Residual CNN with:
-
-  * ResBlocks
-  * Channel Attention (Squeeze-and-Excitation)
-  * Global skip connection
-* Output: Enhanced image with improved color & contrast
+Additional metrics on UIEB validation set:
+- **UIQM**: 1.635 (Underwater Image Quality Measure)
+- **UCIQE**: 23.71 (Underwater Colour Image Quality Evaluation)
 
 ---
 
-## ⚙️ Training Details
+## Architecture
 
-* **Framework:** PyTorch
-* **Epochs:** 200
-* **Batch Size:** 4
-* **Learning Rate:** 2e-4
-* **Optimizer:** Adam
-* **Scheduler:** Cosine Annealing
+```
+Raw Underwater Image
+        │
+        ▼
+┌─────────────────────┐
+│    BlindDenoiser     │  DnCNN-style · depth 8 · 64ch · ~317K params
+│  out = clamp(x−η̂)  │  Learns noise residual, subtracts it
+└─────────────────────┘
+        │
+        ▼
+┌─────────────────────┐
+│    ColorEnhancer    │  6× ResBlock + SE Attention · 64ch · ~738K params
+│  out = clamp(f+x)   │  Fixes colour/contrast, global skip connection
+└─────────────────────┘
+        │
+        ▼
+  Enhanced Output
+```
 
-### 📉 Loss Function
+**Total parameters: ~1.05M**
 
-Combined loss:
+### BlindDenoiser
+- DnCNN-style residual architecture
+- Predicts noise map η̂, then: `output = clamp(x − η̂, 0, 1)`
+- "Blind" — no prior knowledge of noise level required
 
-* MSE Loss
-* SSIM Loss
-* Perceptual Color Loss (LAB space)
-
----
-
-## 📊 Dataset
-
-* **UIEB Dataset (Underwater Image Enhancement Benchmark)**
-* Total images: **890 paired samples** 
-* Train: 801
-* Validation: 89
-
----
-
-## 📈 Evaluation Metrics
-
-The model is evaluated using:
-
-* PSNR (Peak Signal-to-Noise Ratio)
-* SSIM (Structural Similarity Index)
-* MSE (Mean Squared Error)
-* UIQM (Underwater Image Quality Measure)
-* UCIQE (Underwater Colour Image Quality Evaluation)
+### ColorEnhancer
+- Head: Conv(3→64) + ReLU
+- Body: 6× ResBlock — `F_out = ReLU(F_in + BN2(Conv2(ReLU(BN1(Conv1(F_in))))))`
+- SE Attention: AvgPool → FC(64→16) → ReLU → FC(16→64) → Sigmoid
+- Tail: Conv(64→3) + global input skip
+- Output: `clamp(Conv_tail(F_se) + x, 0, 1)`
 
 ---
 
-## 🚀 Results
+## Loss Function
 
-### 🔥 Final Performance (Validation Set)
+```
+L = L_pixel + 0.5 × L_ssim + 0.05 × L_color
+```
 
-| Metric | Value        |
-| ------ | ------------ |
-| PSNR   | **24.10 dB** |
-| SSIM   | **0.9192**   |
-| MSE    | **0.0067**   |
-| UIQM   | **44.39**    |
-| UCIQE  | **28.61**    |
+| Term | Description | Weight |
+|---|---|---|
+| `L_pixel` | RGB MSE between output and reference | 1.0 |
+| `L_ssim` | Differentiable SSIM loss (Gaussian kernel 11×11, σ=1.5) | 0.5 |
+| `L_color` | MSE in normalised CIE LAB space — targets blue-green cast | 0.05 |
 
-✔ PSNR improvement: **+5.89 dB over raw images** 
-
----
-
-## 📊 Visual Outputs
-
-The notebook includes:
-
-* Training vs Validation Loss curves
-* PSNR & SSIM graphs
-* UIQM & UCIQE trends
-* Stage-wise comparison (Raw → Denoised → Enhanced)
-* Visual comparison with ground truth
+> LAB values are normalised (L/100, a/256, b/256) before computing loss to keep scale comparable to pixel MSE.
 
 ---
 
-## 🛠️ Technologies Used
+## Dataset
 
-* Python 🐍
-* PyTorch
-* OpenCV
-* NumPy
-* Matplotlib
-* scikit-image
+[UIEB — Underwater Image Enhancement Benchmark](https://li-chongyi.github.io/proj_benchmark.html)
 
----
+- 890 matched raw ↔ reference image pairs
+- Diverse scenes: reef, marine, murky, deep water
+- Split: 90% train / 10% validation (seed 42)
+- Preprocessing: resize to 256×256, normalise to [0, 1]
 
-## ▶️ How to Run
-
-### Run on Kaggle
-
-1. Open notebook
-2. Click **Run All**
-
-### Run Locally
-
-```bash
-pip install torch torchvision scikit-image matplotlib opencv-python
-jupyter notebook
+**Expected folder structure on Google Drive:**
+```
+MyDrive/
+└── underwater-image-enhancement/
+    ├── raw-890/
+    │   └── raw-890/
+    │       ├── img1.png
+    │       └── ...
+    └── reference-890/
+        └── reference-890/
+            ├── img1.png
+            └── ...
 ```
 
 ---
 
-## 💡 Key Insights
+## Training Configuration
 
-* Combining **denoising + enhancement** improves performance significantly
-* LAB-based color loss stabilizes color correction
-* Residual learning helps preserve structural details
-* Multi-metric evaluation provides better quality assessment
-
----
-
-## 🔮 Future Improvements
-
-* Use GAN-based architectures (e.g., UGAN, WaterNet)
-* Real-time deployment
-* Mobile/edge optimization
-* Larger dataset training
+| Hyperparameter | Value |
+|---|---|
+| Image size | 256 × 256 |
+| Batch size | 4 |
+| Epochs | 200 |
+| Optimizer | Adam |
+| Learning rate | 2×10⁻⁴ |
+| LR scheduler | Cosine annealing (η_min = 1×10⁻⁵) |
+| Weight decay | 1×10⁻⁵ |
+| Gradient clip | 0.5 |
+| Device | CUDA / CPU (auto) |
 
 ---
 
-## 📎 Author
+## Requirements
 
-**Paulette Gudapati**
+```
+torch
+torchvision
+scikit-image
+Pillow
+numpy
+matplotlib
+```
+
+Install with:
+```bash
+pip install torch torchvision scikit-image Pillow numpy matplotlib
+```
+
+Or on Google Colab (already in notebook):
+```python
+!pip install -q scikit-image torch torchvision
+```
 
 ---
 
-## ⭐ If you like this project
+## Usage
 
-Give it a ⭐ on GitHub!
+### 1. Clone the repository
+```bash
+git clone https://github.com/YOUR_USERNAME/underwater-image-enhancement.git
+cd underwater-image-enhancement
+```
+
+### 2. Open in Google Colab
+Upload `underwater_image_enhancement_v3.ipynb` to Colab, or open directly from GitHub.
+
+### 3. Mount Google Drive and set paths
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+
+RAW_DIR = r'/content/drive/MyDrive/underwater-image-enhancement/raw-890/raw-890'
+REF_DIR = r'/content/drive/MyDrive/underwater-image-enhancement/reference-890/reference-890'
+```
+
+### 4. Run all cells
+The notebook will:
+1. Train the BlindDenoiser + ColorEnhancer jointly
+2. Save the best model checkpoint as `best_model.pth`
+3. Generate 6 evaluation figures (loss curves, PSNR/SSIM, UIQM/UCIQE, stage-wise comparison, visual comparison, summary card)
+
+### 5. Load saved model for inference
+```python
+checkpoint = torch.load('best_model.pth', map_location=DEVICE)
+denoiser.load_state_dict(checkpoint['denoiser'])
+enhancer.load_state_dict(checkpoint['enhancer'])
+
+denoiser.eval()
+enhancer.eval()
+
+with torch.no_grad():
+    denoised = denoiser(raw_image)
+    enhanced = enhancer(denoised)
+```
+
+---
+
+## Output Figures
+
+| Figure | Description |
+|---|---|
+| `fig1_loss.png` | Training vs validation loss curves |
+| `fig2_psnr_ssim.png` | PSNR and SSIM over epochs |
+| `fig3_uiqm_uciqe.png` | UIQM and UCIQE over epochs |
+| `fig4_stagewise.png` | Stage-wise metric comparison (Raw → Denoiser → Enhancer) |
+| `fig5_visual.png` | Visual comparison of sample validation image |
+| `fig6_summary.png` | Final performance summary card |
+
+---
+
+## Project Structure
+
+```
+underwater-image-enhancement/
+│
+├── underwater_image_enhancement_v3.ipynb   # Main notebook
+├── best_model.pth                          # Saved model weights (after training)
+├── fig1_loss.png                           # Generated figures
+├── fig2_psnr_ssim.png
+├── fig3_uiqm_uciqe.png
+├── fig4_stagewise.png
+├── fig5_visual.png
+├── fig6_summary.png
+└── README.md
+```
+
+---
+
+## References
+
+1. Peng et al., "U-Shape Transformer for Underwater Image Enhancement," IEEE TIP, 2023
+2. Wang et al., "Simultaneous Restoration and Super-Resolution GAN," Frontiers in Marine Science, 2023
+3. Tolie et al., "DICAM: Deep Inception and Channel-wise Attention Modules," Neurocomputing, 2024
+4. Chandrasekar et al., "PhISH-Net," IEEE WACV, 2024
+5. Li et al., "Dual High-Order Total Variation Model," IEEE TMM, 2024
+6. Adagale-Vairagar et al., "Underwater Image Enhancement using Convolution Denoising Network," ETASR, 2025
+
+---
+
+## License
+
+This project is submitted as academic work for M.Tech Data Science. For research and educational use only.
