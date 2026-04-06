@@ -84,7 +84,7 @@ L = L_pixel + 0.5 × L_ssim + 0.05 × L_color
 
 - 890 matched raw ↔ reference image pairs
 - Diverse scenes: reef, marine, murky, deep water
-- Split: 90% train / 10% validation (seed 42)
+- Split: 90 - 10 split [90% train / 10% validation (seed 42)]
 - Preprocessing: resize to 256×256, normalise to [0, 1]
 
 **Expected folder structure on Google Drive:**
